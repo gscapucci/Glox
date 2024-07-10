@@ -29,3 +29,24 @@ pub fn get(env: Environment, name: Token) -> Result(Object, LoxError) {
     )),
   )
 }
+
+pub fn assign(
+  env: Environment,
+  name: Token,
+  obj: Object,
+) -> Result(Environment, LoxError) {
+  case env.values |> dict.has_key(name.lexeme) {
+    True -> {
+      let d: Dict(String, Object) = env.values |> dict.insert(name.lexeme, obj)
+      let env = Environment(values: d)
+      Ok(env)
+    }
+    False -> {
+      RuntimeError(error.report_token_as_string(
+        name,
+        "Undefined variable '" <> name.lexeme <> "'.",
+      ))
+      |> Error
+    }
+  }
+}

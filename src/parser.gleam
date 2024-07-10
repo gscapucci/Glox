@@ -33,6 +33,7 @@ pub fn parse_priv(
     True -> Ok(statements)
     False -> {
       let res: Result(#(Parser, Stmt), LoxError) = declaration(parser)
+
       use <- bool.guard(
         when: res |> result.is_error,
         return: res |> result.unwrap_error(ParseError("parse error")) |> Error,
@@ -47,11 +48,18 @@ pub fn parse_priv(
 pub fn declaration(parser: Parser) -> Result(#(Parser, Stmt), LoxError) {
   let #(parser, m) = parser |> match([token_type.Var])
   let res = case m {
-    True -> parser |> var_declaration
-    False -> parser |> statement
+    True -> {
+      // io.debug("True")
+      parser |> var_declaration
+    }
+    False -> {
+      // io.debug("False")
+      parser |> statement
+    }
   }
   case res {
     Error(err) -> {
+      io.debug("Error: ")
       io.debug(err)
       let parser = parser |> synchronize
       #(parser, stmt.StmtNone) |> Ok
@@ -144,7 +152,30 @@ pub fn new_parser(tokens: List(Token)) -> Parser {
 }
 
 pub fn expression(parser: Parser) -> Result(#(Parser, Expr), LoxError) {
-  parser |> equality
+  parser |> assignment
+}
+
+pub fn assignment(parser: Parser) -> Result(#(Parser, Expr), LoxError) {
+  let res: Result(#(Parser, Expr), LoxError) = parser |> equality
+  use <- bool.guard(when: res |> result.is_error, return: res)
+  let assert Ok(#(parser, expr)): Result(#(Parser, Expr), LoxError) = res
+  let #(parser, m): #(Parser, Bool) = parser |> match([token_type.Equal])
+  use <- bool.guard(when: !m, return: #(parser, expr) |> Ok)
+  let equals: Token = parser |> previous
+  let res = parser |> assignment
+  use <- bool.guard(when: res |> result.is_error, return: res)
+  let assert Ok(#(parser, value)): Result(#(Parser, Expr), LoxError) = res
+  use <- bool.guard(
+    when: !{ expr |> expr.is_instance_of(expr.ExprTypeVariable) },
+    return: ParseError(error.report_token_as_string(
+      equals,
+      "Invalid assignment target.",
+    ))
+      |> Error,
+  )
+  let assert expr.ExprVariable(expr): Expr = expr
+  let name: Token = expr.name
+  #(parser, expr.ExprAssign(expr.Assign(name, value))) |> Ok
 }
 
 pub fn equality(parser: Parser) -> Result(#(Parser, Expr), LoxError) {
