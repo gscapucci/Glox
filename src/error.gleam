@@ -2,6 +2,12 @@ import gleam/int
 import gleam/io
 import token.{type Token}
 
+pub type LoxError {
+  RuntimeError(String)
+  ParseError(String)
+  LoxError(String)
+}
+
 pub fn report(line: Int, where: String, message: String) {
   report_as_string(line, where, message)
   |> io.print_error

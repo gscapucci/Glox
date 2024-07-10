@@ -6,9 +6,11 @@ pub type Token {
 }
 
 pub fn to_string(token: Token) -> String {
-  token.ttype |> token_type.to_string
-  <> " "
+  "Token(type: "
+  <> token.ttype |> token_type.to_string
+  <> ", lexeme: "
   <> token.lexeme
-  <> " "
+  <> ", literal:"
   <> token.literal |> object.to_string
+  <> ")"
 }

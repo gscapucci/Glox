@@ -1,4 +1,5 @@
-import expr.{type Expr}
+import environment.{Environment}
+import gleam/dict
 import gleam/option.{type Option, Some}
 import gleam/result
 import gleeunit
@@ -86,9 +87,16 @@ pub fn parser_test() {
 
 pub fn interpreter_test() {
   let assert Ok(scan): Result(Scanner, String) =
-    scanner.new_scanner("print 123;\nprint true;\nprint \"lala\";")
+    scanner.new_scanner(
+      "print 123;\n
+       print true;\n
+       print 1 + 1;\n
+       print 1.5 * 2.5;\n
+       print \"lala\";",
+    )
     |> scanner.scan_tokens
   let assert Some(stmts): Option(List(Stmt)) =
     parser.new_parser(scan.tokens) |> parser.parse
-  interpreter.interpret(Interpreter, stmts) |> should.be_ok
+  interpreter.interpret(Interpreter(Environment(dict.new())), stmts)
+  |> should.be_ok
 }

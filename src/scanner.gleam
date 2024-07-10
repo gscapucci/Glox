@@ -371,23 +371,36 @@ pub fn sstring(scan: Scanner) -> Scanner {
       let #(scan, _) = advance(scan)
       sstring(scan)
     }
-    _, _ -> {
-      case is_at_end(scan) {
-        True -> {
-          error.error(scan.line, "Unterminated string")
-          scan
-        }
-        False -> {
-          let #(scan, _) = advance(scan)
-          let value =
-            common.sub_string(scan.source, scan.start + 1, scan.current - 1)
-          add_token_obj(
-            scan,
-            token_type.String,
-            Object(object.ObjTypeString(value)),
-          )
-        }
-      }
+    False, False -> {
+      error.error(scan.line, "Unterminated string")
+      scan
     }
+    False, True -> {
+      let #(scan, _) = advance(scan)
+      let str = common.sub_string(scan.source, scan.start + 1, scan.current - 1)
+      add_token_obj(
+        scan,
+        token_type.String,
+        Object(object.ObjTypeString(str |> unscape)),
+      )
+    }
+    _, _ -> panic as "Unreachable"
+  }
+}
+
+pub fn unscape(input: String) -> String {
+  let chars = input |> string.to_graphemes
+  unscape_priv(chars, "")
+}
+
+pub fn unscape_priv(chars: List(String), str: String) -> String {
+  case chars {
+    ["\\", "n", ..rest] -> unscape_priv(rest, str <> "\n")
+    ["\\", "r", ..rest] -> unscape_priv(rest, str <> "\r")
+    ["\\", "t", ..rest] -> unscape_priv(rest, str <> "\t")
+    ["\\", "\\", ..rest] -> unscape_priv(rest, str <> "\\")
+    ["\\", x, ..rest] -> unscape_priv(rest, str <> "\\" <> x)
+    [c, ..rest] -> unscape_priv(rest, str <> c)
+    [] -> str
   }
 }

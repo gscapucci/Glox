@@ -17,11 +17,17 @@ pub type Unary {
   Unary(operator: Token, right: Expr)
 }
 
+pub type Var {
+  Var(name: Token)
+}
+
 pub type Expr {
   ExprBinary(Binary)
   ExprGrouping(Grouping)
   ExprLiteral(Literal)
   ExprUnary(Unary)
+  ExprVariable(Var)
+  ExprNone
 }
 
 pub fn to_string(expr: Expr) -> String {
@@ -38,5 +44,7 @@ pub fn to_string(expr: Expr) -> String {
     ExprLiteral(Literal(value)) -> value |> object.to_string
     ExprUnary(Unary(op, right)) ->
       "( " <> op.lexeme <> " " <> right |> to_string <> ")"
+    ExprVariable(Var(name)) -> "var(" <> name.lexeme <> ")"
+    ExprNone -> " NONE "
   }
 }
