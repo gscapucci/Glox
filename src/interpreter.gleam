@@ -63,6 +63,7 @@ pub fn accept_stmt(stmt: Stmt, i: Interpreter) -> Result(Interpreter, LoxError) 
     stmt.StmtPrint(p) -> visit_print_stmt(i, p)
     stmt.StmtVar(v) -> visit_var_stmt(i, v)
     stmt.StmtNone -> RuntimeError("Unreachable") |> Error
+    stmt.StmtBlock(b) -> visit_block_stmt(i, b)
   }
 }
 
@@ -353,7 +354,8 @@ pub fn visit_var_stmt(
   stmt: stmt.Var,
 ) -> Result(Interpreter, LoxError) {
   let value: Result(#(Interpreter, Object), LoxError) = case
-    stmt.initializer != expr.ExprNone
+    stmt.initializer
+    != expr.ExprNone
   {
     True -> {
       let res: Result(#(Interpreter, Object), LoxError) =
@@ -402,4 +404,36 @@ pub fn visit_assign_expr(
     Error(err) -> Error(err)
     Ok(env) -> #(Interpreter(environment: env), value) |> Ok
   }
+}
+
+pub fn visit_block_stmt(
+  i: Interpreter,
+  stmts: stmt.Block,
+) -> Result(Interpreter, LoxError) {
+  i |> execute_block(stmts.statements, environment.from_env(i.environment))
+}
+
+pub fn execute_block(
+  i: Interpreter,
+  stmts: List(Stmt),
+  env: Environment,
+) -> Result(Interpreter, LoxError) {
+  let previous: Environment = i.environment
+  let i = Interpreter(env)
+  let res =
+    stmts
+    |> list.fold_until(Ok(i), fn(acc: Result(Interpreter, LoxError), x: Stmt) {
+      case acc {
+        Error(err) -> Stop(Error(err))
+        Ok(interp) -> Continue(interp |> execute(x))
+      }
+    })
+  use <- bool.guard(
+    when: res |> result.is_error,
+    return: res
+      |> result.unwrap_error(RuntimeError("block execution error"))
+      |> Error,
+  )
+  let i = Interpreter(previous)
+  Ok(i)
 }

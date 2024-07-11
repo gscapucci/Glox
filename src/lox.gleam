@@ -7,7 +7,7 @@ import gleam/erlang
 import gleam/io
 import gleam/iterator.{type Iterator}
 import gleam/list
-import gleam/option.{type Option, Some}
+import gleam/option.{type Option, Some, None}
 import gleam/result
 import interpreter.{type Interpreter, Interpreter}
 import parser.{type Parser}
@@ -105,7 +105,7 @@ pub fn lox_main(lox: Lox) -> Result(Lox, LoxError) {
 }
 
 pub fn main() {
-  case lox_main(Lox(False, False, Interpreter(Environment(dict.new())))) {
+  case lox_main(Lox(False, False, Interpreter(Environment(dict.new(), None)))) {
     Error(err) -> {
       io.debug(err)
       Nil

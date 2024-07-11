@@ -1,6 +1,6 @@
 import environment.{Environment}
 import gleam/dict
-import gleam/option.{type Option, Some}
+import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleeunit
 import gleeunit/should
@@ -97,6 +97,6 @@ pub fn interpreter_test() {
     |> scanner.scan_tokens
   let assert Some(stmts): Option(List(Stmt)) =
     parser.new_parser(scan.tokens) |> parser.parse
-  interpreter.interpret(Interpreter(Environment(dict.new())), stmts)
+  interpreter.interpret(Interpreter(Environment(dict.new(), None)), stmts)
   |> should.be_ok
 }

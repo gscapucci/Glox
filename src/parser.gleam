@@ -106,7 +106,52 @@ pub fn var_declaration(parser: Parser) -> Result(#(Parser, Stmt), LoxError) {
 pub fn statement(parser: Parser) -> Result(#(Parser, Stmt), LoxError) {
   let #(parser, m): #(Parser, Bool) = parser |> match([token_type.Print])
   use <- bool.guard(when: m, return: print_statement(parser))
+  let #(parser, m): #(Parser, Bool) = parser |> match([token_type.LeftBrace])
+  use <- bool.lazy_guard(when: m, return: fn() {
+    let res: Result(#(Parser, List(Stmt)), LoxError) = parser |> block
+    use <- bool.guard(
+      when: res |> result.is_error,
+      return: res |> result.unwrap_error(ParseError("Block error")) |> Error,
+    )
+    let assert Ok(#(parser, stmts)) = res
+    #(parser, stmt.StmtBlock(stmt.Block(stmts))) |> Ok
+  })
   expression_statement(parser)
+}
+
+pub fn block(parser: Parser) -> Result(#(Parser, List(Stmt)), LoxError) {
+  parser |> block_priv([])
+}
+
+pub fn block_priv(
+  parser: Parser,
+  acc: List(Stmt),
+) -> Result(#(Parser, List(Stmt)), LoxError) {
+  case parser |> check(token_type.RightBrace), parser |> is_at_end {
+    False, False -> {
+      let res: Result(#(Parser, Stmt), LoxError) = parser |> declaration
+      use <- bool.guard(
+        when: res |> result.is_error,
+        return: res
+          |> result.unwrap_error(ParseError("declaration error"))
+          |> Error,
+      )
+      let assert Ok(#(parser, stmt)) = res
+      block_priv(parser, acc |> list.append([stmt]))
+    }
+    _, _ -> {
+      let res: Result(#(Parser, Token), LoxError) =
+        parser |> consume(token_type.RightBrace, "Expect '}' after block.")
+      use <- bool.guard(
+        when: res |> result.is_error,
+        return: res
+          |> result.unwrap_error(ParseError("consume error"))
+          |> Error,
+      )
+      let assert Ok(#(parser, _)) = res
+      Ok(#(parser, acc))
+    }
+  }
 }
 
 pub fn print_statement(parser: Parser) -> Result(#(Parser, Stmt), LoxError) {

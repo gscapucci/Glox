@@ -13,9 +13,14 @@ pub type Var {
   Var(name: Token, initializer: Expr)
 }
 
+pub type Block {
+  Block(statements: List(Stmt))
+}
+
 pub type Stmt {
   StmtExpression(Expression)
   StmtPrint(Print)
   StmtVar(Var)
+  StmtBlock(Block)
   StmtNone
 }
