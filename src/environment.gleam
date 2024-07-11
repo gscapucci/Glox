@@ -1,7 +1,6 @@
 import error.{type LoxError, RuntimeError}
 import gleam/bool
 import gleam/dict.{type Dict}
-import gleam/io
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import object.{type Object}
@@ -30,7 +29,6 @@ pub fn get(env: Environment, name: Token) -> Result(Object, LoxError) {
       env.values
       |> dict.get(name.lexeme)
       |> result.lazy_unwrap(fn() {
-        io.debug(env.values)
         panic as { "Could not get " <> name.lexeme }
       })
       |> Ok

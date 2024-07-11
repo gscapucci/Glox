@@ -17,10 +17,15 @@ pub type Block {
   Block(statements: List(Stmt))
 }
 
+pub type If {
+  If(condition: Expr, thenb: Stmt, elseb: Stmt)
+}
+
 pub type Stmt {
   StmtExpression(Expression)
   StmtPrint(Print)
   StmtVar(Var)
   StmtBlock(Block)
+  StmtIf(If)
   StmtNone
 }

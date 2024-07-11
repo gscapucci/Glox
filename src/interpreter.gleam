@@ -64,6 +64,7 @@ pub fn accept_stmt(stmt: Stmt, i: Interpreter) -> Result(Interpreter, LoxError) 
     stmt.StmtVar(v) -> visit_var_stmt(i, v)
     stmt.StmtNone -> RuntimeError("Unreachable") |> Error
     stmt.StmtBlock(b) -> visit_block_stmt(i, b)
+    stmt.StmtIf(iff) -> visit_if_stmt(i, iff)
   }
 }
 
@@ -116,6 +117,8 @@ pub fn is_truthy(o: Object) -> Bool {
   case o {
     Object(object.None) -> False
     Object(object.ObjTypeBool(b)) -> b
+    Object(object.ObjTypeInt(0)) -> False
+    Object(object.ObjTypeNil) -> False
     _ -> True
   }
 }
@@ -436,4 +439,24 @@ pub fn execute_block(
   )
   let i = Interpreter(previous)
   Ok(i)
+}
+
+pub fn visit_if_stmt(
+  i: Interpreter,
+  stmt: stmt.If,
+) -> Result(Interpreter, LoxError) {
+  let res: Result(#(Interpreter, Object), LoxError) =
+    i |> evaluate(stmt.condition)
+  use <- bool.guard(
+    when: res |> result.is_error,
+    return: res
+      |> result.unwrap_error(RuntimeError("Evaluate condition error"))
+      |> Error,
+  )
+  let assert Ok(#(i, object)) = res
+  case object |> is_truthy, stmt.elseb != stmt.StmtNone {
+    True, _ -> i |> execute(stmt.thenb)
+    False, True -> i |> execute(stmt.elseb)
+    _, _ -> Ok(i)
+  }
 }
