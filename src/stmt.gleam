@@ -21,11 +21,16 @@ pub type If {
   If(condition: Expr, thenb: Stmt, elseb: Stmt)
 }
 
+pub type While {
+  While(condition: Expr, body: Stmt)
+}
+
 pub type Stmt {
   StmtExpression(Expression)
   StmtPrint(Print)
   StmtVar(Var)
   StmtBlock(Block)
   StmtIf(If)
+  StmtWhile(While)
   StmtNone
 }

@@ -6,6 +6,7 @@ import gleam/float
 import gleam/int
 import gleam/io
 import gleam/list.{Continue, Stop}
+import gleam/option.{Some}
 import gleam/order
 import gleam/result
 import gleam/string
@@ -55,7 +56,6 @@ pub fn accept_expr(
     expr.ExprAssign(a) -> visit_assign_expr(i, a)
     expr.ExprLogical(l) -> visit_logical_expr(i, l)
     expr.ExprNone -> RuntimeError("Unreachable") |> Error
-    _ -> todo
   }
 }
 
@@ -67,6 +67,7 @@ pub fn accept_stmt(stmt: Stmt, i: Interpreter) -> Result(Interpreter, LoxError) 
     stmt.StmtNone -> RuntimeError("Unreachable") |> Error
     stmt.StmtBlock(b) -> visit_block_stmt(i, b)
     stmt.StmtIf(iff) -> visit_if_stmt(i, iff)
+    stmt.StmtWhile(w) -> visit_while_stmt(i, w)
   }
 }
 
@@ -392,15 +393,13 @@ pub fn visit_block_stmt(
   i: Interpreter,
   stmts: stmt.Block,
 ) -> Result(Interpreter, LoxError) {
-  i |> execute_block(stmts.statements, environment.from_env(i.environment))
+  execute_block(stmts.statements, environment.from_env(i.environment))
 }
 
 pub fn execute_block(
-  i: Interpreter,
   stmts: List(Stmt),
   env: Environment,
 ) -> Result(Interpreter, LoxError) {
-  let previous: Environment = i.environment
   let i = Interpreter(env)
   let res: Result(Interpreter, LoxError) =
     stmts
@@ -410,7 +409,9 @@ pub fn execute_block(
         Ok(interp) -> Continue(interp |> execute(x))
       }
     })
-  use _ <- result.try(res)
+
+  use i <- result.try(res)
+  let assert Some(previous) = i.environment.enclosing
   Interpreter(previous)
   |> Ok
 }
@@ -437,8 +438,26 @@ pub fn visit_logical_expr(
     True, True -> #(i, left) |> Ok
     False, False -> #(i, left) |> Ok
     _, _ -> {
-      use #(i, right): #(Interpreter, Object) <- result.try(i|>evaluate(expr.right))
-      #(i, right)|>Ok
+      use #(i, right): #(Interpreter, Object) <- result.try(
+        i |> evaluate(expr.right),
+      )
+      #(i, right) |> Ok
     }
+  }
+}
+
+pub fn visit_while_stmt(
+  i: Interpreter,
+  stmt: stmt.While,
+) -> Result(Interpreter, LoxError) {
+  use #(i, obj): #(Interpreter, Object) <- result.try(
+    i |> evaluate(stmt.condition),
+  )
+  case obj |> is_truthy {
+    True -> {
+      use i <- result.try(i |> execute(stmt.body))
+      i |> visit_while_stmt(stmt)
+    }
+    False -> Ok(i)
   }
 }

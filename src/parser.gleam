@@ -75,17 +75,36 @@ pub fn var_declaration(parser: Parser) -> Result(#(Parser, Stmt), LoxError) {
 
 pub fn statement(parser: Parser) -> Result(#(Parser, Stmt), LoxError) {
   let #(parser, m): #(Parser, Bool) =
-    parser |> match([token_type.If, token_type.Print, token_type.LeftBrace])
+    parser
+    |> match([
+      token_type.If,
+      token_type.Print,
+      token_type.While,
+      token_type.LeftBrace,
+    ])
 
   case m, previous(parser).ttype {
     True, token_type.If -> if_statement(parser)
     True, token_type.Print -> print_statement(parser)
+    True, token_type.While -> while_statement(parser)
     True, token_type.LeftBrace -> {
       use #(parser, stmts) <- result.try(parser |> block)
       #(parser, stmt.StmtBlock(stmt.Block(stmts))) |> Ok
     }
     _, _ -> expression_statement(parser)
   }
+}
+
+pub fn while_statement(parser: Parser) -> Result(#(Parser, Stmt), LoxError) {
+  use #(parser, _): #(Parser, Token) <- result.try(
+    parser |> consume(token_type.LeftParen, "Expect '(' after 'while'."),
+  )
+  use #(parser, condition): #(Parser, Expr) <- result.try(parser |> expression)
+  use #(parser, _): #(Parser, Token) <- result.try(
+    parser |> consume(token_type.RightParen, "Expect ')' after condition."),
+  )
+  use #(parser, body): #(Parser, Stmt) <- result.try(parser |> statement)
+  #(parser, stmt.StmtWhile(stmt.While(condition, body))) |> Ok
 }
 
 pub fn if_statement(parser: Parser) -> Result(#(Parser, Stmt), LoxError) {
@@ -174,40 +193,38 @@ pub fn assignment(parser: Parser) -> Result(#(Parser, Expr), LoxError) {
 }
 
 pub fn or(parser: Parser) -> Result(#(Parser, Expr), LoxError) {
-  use #(parser, expr) <- result.try(parser|>and)
-  parser|>or_priv(expr)
+  use #(parser, expr) <- result.try(parser |> and)
+  parser |> or_priv(expr)
 }
 
 pub fn or_priv(parser: Parser, expr: Expr) -> Result(#(Parser, Expr), LoxError) {
-  let #(parser, m): #(Parser, Bool) = parser|>match([token_type.Or])
+  let #(parser, m): #(Parser, Bool) = parser |> match([token_type.Or])
   case m {
     True -> {
-      let operator: Token = parser|>previous
-      use #(parser, right) <- result.try(parser|>and)
-      #(parser, expr.ExprLogical(expr.Logical(expr, operator, right)))|>Ok
+      let operator: Token = parser |> previous
+      use #(parser, right) <- result.try(parser |> and)
+      #(parser, expr.ExprLogical(expr.Logical(expr, operator, right))) |> Ok
     }
-    False -> #(parser, expr)|>Ok
+    False -> #(parser, expr) |> Ok
   }
 }
 
 pub fn and(parser: Parser) -> Result(#(Parser, Expr), LoxError) {
-  use #(parser, expr): #(Parser, Expr) <- result.try(parser|>equality)
-  parser|>and_priv(expr)
+  use #(parser, expr): #(Parser, Expr) <- result.try(parser |> equality)
+  parser |> and_priv(expr)
 }
 
 pub fn and_priv(parser: Parser, expr: Expr) -> Result(#(Parser, Expr), LoxError) {
-  let #(parser, m): #(Parser, Bool) = parser|>match([token_type.And])
+  let #(parser, m): #(Parser, Bool) = parser |> match([token_type.And])
   case m {
     True -> {
-      let operator: Token = parser|>previous
-      use #(parser, right): #(Parser, Expr) <- result.try(parser|>equality)
-      #(parser, expr.ExprLogical(expr.Logical(expr, operator, right)))|>Ok
+      let operator: Token = parser |> previous
+      use #(parser, right): #(Parser, Expr) <- result.try(parser |> equality)
+      #(parser, expr.ExprLogical(expr.Logical(expr, operator, right))) |> Ok
     }
-    False -> #(parser, expr)|>Ok
+    False -> #(parser, expr) |> Ok
   }
 }
-
-
 
 pub fn equality(parser: Parser) -> Result(#(Parser, Expr), LoxError) {
   use #(parser, expr) <- result.try(parser |> comparision)

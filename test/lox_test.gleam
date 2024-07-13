@@ -1,6 +1,7 @@
 import environment.{Environment}
 import error.{type LoxError}
 import gleam/dict
+import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleeunit
@@ -43,7 +44,7 @@ pub fn scanner_test() {
 
 pub fn peek_test() {
   let scan: Scanner = scanner.new_scanner("1 + 2 * 3;")
-  let assert Ok(scan): Result(Scanner, LoxError) = scan |> scanner.scan_tokens
+  let scan: Scanner = scan |> scanner.scan_tokens |> should.be_ok
   let par: Parser = parser.new_parser(scan.tokens)
 
   let p = par |> parser.peek
@@ -81,23 +82,22 @@ pub fn peek_test() {
 
 pub fn parser_test() {
   let scan: Scanner = scanner.new_scanner("1 + 2 * 3;")
-  let assert Ok(scan): Result(Scanner, LoxError) = scan |> scanner.scan_tokens
+  let scan = scan |> scanner.scan_tokens |> should.be_ok
   let par: Parser = parser.new_parser(scan.tokens)
   par |> parser.parse |> should.be_some
 }
 
 pub fn interpreter_test() {
-  let assert Ok(scan): Result(Scanner, LoxError) =
-    scanner.new_scanner(
-      "print 123;\n
-       print true;\n
-       print 1 + 1;\n
-       print 1.5 * 2.5;\n
-       print \"lala\";",
-    )
-    |> scanner.scan_tokens
-  let assert Some(stmts): Option(List(Stmt)) =
-    parser.new_parser(scan.tokens) |> parser.parse
-  interpreter.interpret(Interpreter(Environment(dict.new(), None)), stmts)
-  |> should.be_ok
+  [
+    "print 123;\nprint true;\nprint 1 + 1;\nprint 1.5 * 2.5;\nprint \"lala\";",
+    "var a = 5;\nwhile(a > 0){\nprint a;\na = a - 1;\n}",
+    "var b = true;\nif(b){\nprint \"True\";\n} else {\nprint \"False\";\n}",
+  ]
+  |> list.map(fn(x: String) {
+    let scan = x |> scanner.new_scanner |> scanner.scan_tokens |> should.be_ok
+    let stmts =
+      scan.tokens |> parser.new_parser |> parser.parse |> should.be_some
+    interpreter.interpret(Interpreter(Environment(dict.new(), None)), stmts)
+    |> should.be_ok
+  })
 }
