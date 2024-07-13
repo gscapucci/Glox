@@ -54,30 +54,21 @@ pub fn assign(
   name: Token,
   value: Object,
 ) -> Result(Environment, LoxError) {
-  use <- bool.lazy_guard(
-    when: env.values |> dict.has_key(name.lexeme),
-    return: fn() {
-      let d: Dict(String, Object) =
-        env.values |> dict.insert(name.lexeme, value)
-      let env = Environment(values: d, enclosing: env.enclosing)
-      Ok(env)
-    },
-  )
-  use <- bool.lazy_guard(when: env.enclosing |> option.is_some, return: fn() {
-    let enc: Result(Environment, LoxError) =
-      env.enclosing
-      |> option.lazy_unwrap(fn() { panic as "Unreachable" })
-      |> assign(name, value)
-    use <- bool.guard(
-      when: enc |> result.is_error,
-      return: enc |> result.unwrap_error(RuntimeError("Assign error")) |> Error,
-    )
-    let assert Ok(enc): Result(Environment, LoxError) = enc
-    Environment(env.values, Some(enc)) |> Ok
+  use <- bool.guard(when: env.values |> dict.has_key(name.lexeme), return: {
+    env.values
+    |> dict.insert(name.lexeme, value)
+    |> Environment(enclosing: env.enclosing)
+    |> Ok
   })
-  RuntimeError(error.report_token_as_string(
-    name,
-    "Undefined variable '" <> name.lexeme <> "'.",
-  ))
-  |> Error
+  use enc <- result.try(
+    env.enclosing
+    |> option.to_result(
+      RuntimeError(error.report_token_as_string(
+        name,
+        "Undefined variable '" <> name.lexeme <> "'.",
+      )),
+    ),
+  )
+  use enc <- result.try(enc |> assign(name, value))
+  Environment(env.values, Some(enc)) |> Ok
 }

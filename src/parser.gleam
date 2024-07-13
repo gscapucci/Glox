@@ -32,13 +32,7 @@ pub fn parse_priv(
   case parser |> is_at_end {
     True -> Ok(statements)
     False -> {
-      let res: Result(#(Parser, Stmt), LoxError) = declaration(parser)
-
-      use <- bool.guard(
-        when: res |> result.is_error,
-        return: res |> result.unwrap_error(ParseError("parse error")) |> Error,
-      )
-      let assert Ok(#(parser, stmt)): Result(#(Parser, Stmt), LoxError) = res
+      use #(parser, stmt) <- result.try(parser |> declaration)
       let statements = statements |> list.append([stmt])
       parse_priv(parser, statements)
     }
@@ -63,102 +57,52 @@ pub fn declaration(parser: Parser) -> Result(#(Parser, Stmt), LoxError) {
 }
 
 pub fn var_declaration(parser: Parser) -> Result(#(Parser, Stmt), LoxError) {
-  let res: Result(#(Parser, Token), LoxError) =
-    parser |> consume(token_type.Identifier, "Expect variable name")
-  use <- bool.guard(
-    when: res |> result.is_error,
-    return: res
-      |> result.unwrap_error(ParseError("Expect variable name"))
-      |> Error,
+  use #(parser, name) <- result.try(
+    parser |> consume(token_type.Identifier, "Expect variable name"),
   )
-  let assert Ok(#(parser, name)) = res
   let #(parser, m) = parser |> match([token_type.Equal])
-  let res: Result(#(Parser, Expr), LoxError) = case m {
+
+  use #(parser, initializer) <- result.try(case m {
     True -> parser |> expression
     False -> #(parser, expr.ExprNone) |> Ok
-  }
-  use <- bool.guard(
-    when: res |> result.is_error,
-    return: res |> result.unwrap_error(ParseError("expression error")) |> Error,
-  )
-  let assert Ok(#(parser, initializer)) = res
-  let res: Result(#(Parser, Token), LoxError) =
+  })
+  use #(parser, _) <- result.try(
     parser
-    |> consume(token_type.Semicolon, "Expect ';' after variable declaration.")
-  use <- bool.guard(
-    when: res |> result.is_error,
-    return: res
-      |> result.unwrap_error(ParseError(
-        "Expect ';' after variable declaration.",
-      ))
-      |> Error,
+    |> consume(token_type.Semicolon, "Expect ';' after variable declaration."),
   )
-  let assert Ok(#(parser, _)) = res
   #(parser, stmt.StmtVar(stmt.Var(name, initializer))) |> Ok
 }
 
 pub fn statement(parser: Parser) -> Result(#(Parser, Stmt), LoxError) {
-  let #(parser, m): #(Parser, Bool) = parser |> match([token_type.If])
-  use <- bool.guard(when: m, return: if_statement(parser))
-  let #(parser, m): #(Parser, Bool) = parser |> match([token_type.Print])
-  use <- bool.guard(when: m, return: print_statement(parser))
-  let #(parser, m): #(Parser, Bool) = parser |> match([token_type.LeftBrace])
-  use <- bool.lazy_guard(when: m, return: fn() {
-    let res: Result(#(Parser, List(Stmt)), LoxError) = parser |> block
-    use <- bool.guard(
-      when: res |> result.is_error,
-      return: res |> result.unwrap_error(ParseError("Block error")) |> Error,
-    )
-    let assert Ok(#(parser, stmts)) = res
-    #(parser, stmt.StmtBlock(stmt.Block(stmts))) |> Ok
-  })
-  expression_statement(parser)
+  let #(parser, m): #(Parser, Bool) =
+    parser |> match([token_type.If, token_type.Print, token_type.LeftBrace])
+
+  case m, previous(parser).ttype {
+    True, token_type.If -> if_statement(parser)
+    True, token_type.Print -> print_statement(parser)
+    True, token_type.LeftBrace -> {
+      use #(parser, stmts) <- result.try(parser |> block)
+      #(parser, stmt.StmtBlock(stmt.Block(stmts))) |> Ok
+    }
+    _, _ -> expression_statement(parser)
+  }
 }
 
 pub fn if_statement(parser: Parser) -> Result(#(Parser, Stmt), LoxError) {
-  let res: Result(#(Parser, Token), LoxError) =
-    parser
-    |> consume(token_type.LeftParen, "Expect '(' after 'if'.")
-  use <- bool.guard(
-    when: res |> result.is_error,
-    return: res
-      |> result.unwrap_error(ParseError("Expect '(' after 'if'."))
-      |> Error,
+  use #(parser, _) <- result.try(
+    parser |> consume(token_type.LeftParen, "Expect '(' after 'if'."),
   )
-  let assert Ok(#(parser, _)) = res
-  let res: Result(#(Parser, Expr), LoxError) = parser |> expression
-  use <- bool.guard(
-    when: res |> result.is_error,
-    return: res |> result.unwrap_error(ParseError("Expression error")) |> Error,
+  use #(parser, condition) <- result.try(parser |> expression)
+  use #(parser, _) <- result.try(
+    parser |> consume(token_type.RightParen, "Expect ')' after if condition"),
   )
-  let assert Ok(#(parser, condition)) = res
-  let res: Result(#(Parser, Token), LoxError) =
-    parser |> consume(token_type.RightParen, "Expect ')' after if condition")
-  use <- bool.guard(
-    when: res |> result.is_error,
-    return: res
-      |> result.unwrap_error(ParseError("Expect ')' after if condition"))
-      |> Error,
-  )
-  let assert Ok(#(parser, _)) = res
-
-  let res: Result(#(Parser, Stmt), LoxError) = parser |> statement
-  use <- bool.guard(
-    when: res |> result.is_error,
-    return: res |> result.unwrap_error(ParseError("Statement Error")) |> Error,
-  )
-  let assert Ok(#(parser, then_branch)): Result(#(Parser, Stmt), LoxError) = res
+  use #(parser, then_branch) <- result.try(parser |> statement)
 
   let #(parser, m): #(Parser, Bool) = parser |> match([token_type.Else])
-  let res: Result(#(Parser, Stmt), LoxError) = case m {
+  use #(parser, else_branch) <- result.try(case m {
     True -> parser |> statement
     False -> Ok(#(parser, stmt.StmtNone))
-  }
-  use <- bool.guard(
-    when: res |> result.is_error,
-    return: res |> result.unwrap_error(ParseError("Statement error")) |> Error,
-  )
-  let assert Ok(#(parser, else_branch)) = res
+  })
   #(parser, stmt.StmtIf(stmt.If(condition, then_branch, else_branch))) |> Ok
 }
 
@@ -172,66 +116,32 @@ pub fn block_priv(
 ) -> Result(#(Parser, List(Stmt)), LoxError) {
   case parser |> check(token_type.RightBrace), parser |> is_at_end {
     False, False -> {
-      let res: Result(#(Parser, Stmt), LoxError) = parser |> declaration
-      use <- bool.guard(
-        when: res |> result.is_error,
-        return: res
-          |> result.unwrap_error(ParseError("declaration error"))
-          |> Error,
-      )
-      let assert Ok(#(parser, stmt)) = res
+      use #(parser, stmt) <- result.try(parser |> declaration)
       block_priv(parser, acc |> list.append([stmt]))
     }
     _, _ -> {
-      let res: Result(#(Parser, Token), LoxError) =
-        parser |> consume(token_type.RightBrace, "Expect '}' after block.")
-      use <- bool.guard(
-        when: res |> result.is_error,
-        return: res
-          |> result.unwrap_error(ParseError("consume error"))
-          |> Error,
+      use #(parser, _) <- result.try(
+        parser |> consume(token_type.RightBrace, "Expect '}' after block."),
       )
-      let assert Ok(#(parser, _)) = res
       Ok(#(parser, acc))
     }
   }
 }
 
 pub fn print_statement(parser: Parser) -> Result(#(Parser, Stmt), LoxError) {
-  let value: Result(#(Parser, Expr), LoxError) = expression(parser)
-  use <- bool.guard(
-    when: value |> result.is_error,
-    return: value
-      |> result.unwrap_error(ParseError("expression error"))
-      |> Error,
+  use #(parser, value) <- result.try(expression(parser))
+  use #(parser, _) <- result.try(
+    parser |> consume(token_type.Semicolon, "Expect ';' after value"),
   )
-  let assert Ok(#(parser, value)): Result(#(Parser, Expr), LoxError) = value
-  let res: Result(#(Parser, Token), LoxError) =
-    parser |> consume(token_type.Semicolon, "Expect ';' after value")
-  use <- bool.guard(
-    when: res |> result.is_error,
-    return: Error(ParseError("Expect ';' after value")),
-  )
-  let assert Ok(#(parser, _)) = res
+
   #(parser, stmt.StmtPrint(stmt.Print(value))) |> Ok
 }
 
 pub fn expression_statement(parser: Parser) -> Result(#(Parser, Stmt), LoxError) {
-  let expr: Result(#(Parser, Expr), LoxError) = expression(parser)
-  use <- bool.guard(
-    when: expr |> result.is_error,
-    return: expr |> result.unwrap_error(ParseError("expression error")) |> Error,
+  use #(parser, expr) <- result.try(expression(parser))
+  use #(parser, _) <- result.try(
+    parser |> consume(token_type.Semicolon, "Expect ';' after statement."),
   )
-  let assert Ok(#(parser, expr)): Result(#(Parser, Expr), LoxError) = expr
-  let res: Result(#(Parser, Token), LoxError) =
-    parser |> consume(token_type.Semicolon, "Expect ';' after statement.")
-  use <- bool.guard(
-    when: res |> result.is_error,
-    return: res
-      |> result.unwrap_error(ParseError("Expect ';' after statement."))
-      |> Error,
-  )
-  let assert Ok(#(parser, _)): Result(#(Parser, Token), LoxError) = res
   Ok(#(parser, stmt.StmtExpression(stmt.Expression(expr))))
 }
 
@@ -244,15 +154,11 @@ pub fn expression(parser: Parser) -> Result(#(Parser, Expr), LoxError) {
 }
 
 pub fn assignment(parser: Parser) -> Result(#(Parser, Expr), LoxError) {
-  let res: Result(#(Parser, Expr), LoxError) = parser |> equality
-  use <- bool.guard(when: res |> result.is_error, return: res)
-  let assert Ok(#(parser, expr)): Result(#(Parser, Expr), LoxError) = res
+  use #(parser, expr) <- result.try(parser |> equality)
   let #(parser, m): #(Parser, Bool) = parser |> match([token_type.Equal])
   use <- bool.guard(when: !m, return: #(parser, expr) |> Ok)
   let equals: Token = parser |> previous
-  let res = parser |> assignment
-  use <- bool.guard(when: res |> result.is_error, return: res)
-  let assert Ok(#(parser, value)): Result(#(Parser, Expr), LoxError) = res
+  use #(parser, value) <- result.try(parser |> assignment)
   use <- bool.guard(
     when: !{ expr |> expr.is_instance_of(expr.ExprTypeVariable) },
     return: ParseError(error.report_token_as_string(
@@ -267,12 +173,7 @@ pub fn assignment(parser: Parser) -> Result(#(Parser, Expr), LoxError) {
 }
 
 pub fn equality(parser: Parser) -> Result(#(Parser, Expr), LoxError) {
-  let res: Result(#(Parser, Expr), LoxError) = parser |> comparision
-  use <- bool.guard(
-    when: res |> result.is_error,
-    return: res |> result.unwrap_error(ParseError("Equality error")) |> Error,
-  )
-  let assert Ok(#(parser, expr)): Result(#(Parser, Expr), LoxError) = res
+  use #(parser, expr) <- result.try(parser |> comparision)
   parser |> equality_priv(expr)
 }
 
@@ -285,14 +186,7 @@ pub fn equality_priv(
   case m {
     True -> {
       let operator: Token = parser |> previous
-      let res = parser |> comparision
-      use <- bool.guard(
-        when: res |> result.is_error,
-        return: res
-          |> result.unwrap_error(ParseError("Equality error"))
-          |> Error,
-      )
-      let assert Ok(#(parser, right)): Result(#(Parser, Expr), LoxError) = res
+      use #(parser, right) <- result.try(parser |> comparision)
       let expr: Expr = expr.ExprBinary(expr.Binary(expr, operator, right))
       parser |> equality_priv(expr)
     }
@@ -355,12 +249,7 @@ pub fn previous(parser: Parser) -> Token {
 }
 
 pub fn comparision(parser: Parser) -> Result(#(Parser, Expr), LoxError) {
-  let res: Result(#(Parser, Expr), LoxError) = parser |> term
-  use <- bool.guard(
-    when: res |> result.is_error,
-    return: res |> result.unwrap_error(ParseError("camparison error")) |> Error,
-  )
-  let assert Ok(#(parser, expr)): Result(#(Parser, Expr), LoxError) = res
+  use #(parser, expr) <- result.try(parser |> term)
   parser |> comparision_priv(expr)
 }
 
@@ -379,14 +268,7 @@ pub fn comparision_priv(
   case m {
     True -> {
       let operator: Token = parser |> previous
-      let res: Result(#(Parser, Expr), LoxError) = parser |> term
-      use <- bool.guard(
-        when: res |> result.is_error,
-        return: res
-          |> result.unwrap_error(ParseError("comparision erro"))
-          |> Error,
-      )
-      let assert Ok(#(parser, right)): Result(#(Parser, Expr), LoxError) = res
+      use #(parser, right) <- result.try(parser |> term)
       let expr: Expr = expr.ExprBinary(expr.Binary(expr, operator, right))
       parser |> comparision_priv(expr)
     }
@@ -395,12 +277,7 @@ pub fn comparision_priv(
 }
 
 pub fn term(parser: Parser) -> Result(#(Parser, Expr), LoxError) {
-  let res: Result(#(Parser, Expr), LoxError) = parser |> factor
-  use <- bool.guard(
-    when: res |> result.is_error,
-    return: res |> result.unwrap_error(ParseError("term error")) |> Error,
-  )
-  let assert Ok(#(parser, expr)): Result(#(Parser, Expr), LoxError) = res
+  use #(parser, expr) <- result.try(parser |> factor)
   parser |> term_priv(expr)
 }
 
@@ -413,12 +290,7 @@ pub fn term_priv(
   case m {
     True -> {
       let operator: Token = parser |> previous()
-      let res: Result(#(Parser, Expr), LoxError) = parser |> factor
-      use <- bool.guard(
-        when: res |> result.is_error,
-        return: res |> result.unwrap_error(ParseError("term error")) |> Error,
-      )
-      let assert Ok(#(parser, right)): Result(#(Parser, Expr), LoxError) = res
+      use #(parser, right) <- result.try(parser |> factor)
       let expr: Expr = expr.ExprBinary(expr.Binary(expr, operator, right))
       parser |> term_priv(expr)
     }
@@ -427,12 +299,7 @@ pub fn term_priv(
 }
 
 pub fn factor(parser: Parser) -> Result(#(Parser, Expr), LoxError) {
-  let res: Result(#(Parser, Expr), LoxError) = parser |> unary
-  use <- bool.guard(
-    when: res |> result.is_error,
-    return: res |> result.unwrap_error(ParseError("factor error")) |> Error,
-  )
-  let assert Ok(#(parser, expr)): Result(#(Parser, Expr), LoxError) = res
+  use #(parser, expr) <- result.try(parser |> unary)
   parser |> factor_priv(expr)
 }
 
@@ -445,17 +312,8 @@ pub fn factor_priv(
   case m {
     True -> {
       let operator: Token = parser |> previous
-      let res: Result(#(Parser, Expr), LoxError) = parser |> unary
-      use <- bool.guard(
-        when: res |> result.is_error,
-        return: res |> result.unwrap_error(ParseError("factor error")) |> Error,
-      )
-      let assert Ok(#(parser, right)) = res
-      // io.println(right |> expr.to_string)
-      // io.println(expr |> expr.to_string)
+      use #(parser, right) <- result.try(parser |> unary)
       let expr: Expr = expr.ExprBinary(expr.Binary(expr, operator, right))
-      // io.println(expr |> expr.to_string)
-      // io.println("")
       parser |> factor_priv(expr)
     }
     False -> #(parser, expr) |> Ok
@@ -468,9 +326,7 @@ pub fn unary(parser: Parser) -> Result(#(Parser, Expr), LoxError) {
   case m {
     True -> {
       let operator: Token = parser |> previous
-      let res: Result(#(Parser, Expr), LoxError) = parser |> unary
-      use <- bool.guard(when: res |> result.is_error, return: res)
-      let assert Ok(#(parser, right)): Result(#(Parser, Expr), LoxError) = res
+      use #(parser, right) <- result.try(parser |> unary)
       #(parser, expr.ExprUnary(expr.Unary(operator, right))) |> Ok
     }
     False -> {
@@ -521,22 +377,12 @@ pub fn primary(parser: Parser) -> Result(#(Parser, Expr), LoxError) {
         #(parser, expr.ExprLiteral(expr.Literal(previous(parser).literal)))
         |> Ok
       token_type.LeftParen -> {
-        let res: Result(#(Parser, Expr), LoxError) = parser |> expression
-        use <- bool.guard(
-          when: res |> result.is_error,
-          return: res
-            |> result.unwrap_error(ParseError("expression error"))
-            |> Error,
-        )
-        let assert Ok(#(parser, expr)): Result(#(Parser, Expr), LoxError) = res
-        let res: Result(#(Parser, Token), LoxError) =
+        use #(parser, expr) <- result.try(parser |> expression)
+        use #(parser, _) <- result.try(
           parser
-          |> consume(token_type.RightParen, "Expect ')' after expression")
-        use <- bool.guard(
-          when: res |> result.is_error,
-          return: Error(res |> result.unwrap_error(ParseError("Unknown error"))),
+          |> consume(token_type.RightParen, "Expect ')' after expression"),
         )
-        let assert Ok(#(parser, _)): Result(#(Parser, Token), LoxError) = res
+
         #(parser, expr.ExprGrouping(expr.Grouping(expr))) |> Ok
       }
       _ -> {

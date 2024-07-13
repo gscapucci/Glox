@@ -54,6 +54,7 @@ pub fn accept_expr(
     }
     expr.ExprAssign(a) -> visit_assign_expr(i, a)
     expr.ExprNone -> RuntimeError("Unreachable") |> Error
+    _ -> todo
   }
 }
 
@@ -90,13 +91,16 @@ pub fn visit_unary_expr(
   i: Interpreter,
   e: expr.Unary,
 ) -> Result(#(Interpreter, Object), LoxError) {
-  let res: Result(#(Interpreter, Object), LoxError) = i |> evaluate(e.right)
-  use <- bool.guard(when: res |> result.is_error, return: res)
-  let assert Ok(#(i, right)): Result(#(Interpreter, Object), LoxError) = res
+  use #(i, right): #(Interpreter, Object) <- result.try(i |> evaluate(e.right))
   case e.operator.ttype {
     token_type.Bang -> {
-      let ret = !is_truthy(right)
-      #(i, Object(object.ObjTypeBool(ret))) |> Ok
+      let right: Object =
+        right
+        |> is_truthy
+        |> bool.negate
+        |> object.ObjTypeBool
+        |> Object
+      #(i, right) |> Ok
     }
     token_type.Minus -> {
       case right.ttype {
@@ -127,13 +131,8 @@ pub fn visit_binary_expr(
   i: Interpreter,
   e: expr.Binary,
 ) -> Result(#(Interpreter, Object), LoxError) {
-  let res: Result(#(Interpreter, Object), LoxError) = evaluate(i, e.left)
-  use <- bool.guard(when: res |> result.is_error, return: res)
-  let assert Ok(#(i, left)): Result(#(Interpreter, Object), LoxError) = res
-
-  let res: Result(#(Interpreter, Object), LoxError) = evaluate(i, e.right)
-  use <- bool.guard(when: res |> result.is_error, return: res)
-  let assert Ok(#(i, right)): Result(#(Interpreter, Object), LoxError) = res
+  use #(i, left): #(Interpreter, Object) <- result.try(evaluate(i, e.left))
+  use #(i, right): #(Interpreter, Object) <- result.try(evaluate(i, e.right))
 
   case e.operator.ttype {
     token_type.Minus -> {
@@ -360,29 +359,14 @@ pub fn visit_var_stmt(
     stmt.initializer
     != expr.ExprNone
   {
-    True -> {
-      let res: Result(#(Interpreter, Object), LoxError) =
-        i |> evaluate(stmt.initializer)
-      use <- bool.guard(
-        when: res |> result.is_error,
-        return: res
-          |> result.unwrap_error(RuntimeError("eval error"))
-          |> Error,
-      )
-      let assert Ok(#(i, obj)) = res
-      #(i, obj) |> Ok
-    }
+    True -> i |> evaluate(stmt.initializer)
     False -> #(i, Object(object.ObjTypeNil)) |> Ok
   }
-  use <- bool.guard(
-    when: value |> result.is_error,
-    return: value |> result.unwrap_error(RuntimeError("eval error")) |> Error,
-  )
-  let assert Ok(#(i, value)): Result(#(Interpreter, Object), LoxError) = value
-  let env: Environment =
-    i.environment |> environment.define(stmt.name.lexeme, value)
-  let i: Interpreter = Interpreter(environment: env)
-  Ok(i)
+  use #(i, value) <- result.try(value)
+  i.environment
+  |> environment.define(stmt.name.lexeme, value)
+  |> Interpreter
+  |> Ok
 }
 
 pub fn visit_variable_expr(
@@ -396,17 +380,11 @@ pub fn visit_assign_expr(
   i: Interpreter,
   e: expr.Assign,
 ) -> Result(#(Interpreter, Object), LoxError) {
-  let res: Result(#(Interpreter, Object), LoxError) = evaluate(i, e.value)
-  use <- bool.guard(
-    when: res |> result.is_error,
-    return: res |> result.unwrap_error(RuntimeError("Evaluete Error")) |> Error,
+  use #(i, value): #(Interpreter, Object) <- result.try(i |> evaluate(e.value))
+  use env: Environment <- result.try(
+    i.environment |> environment.assign(e.name, value),
   )
-  let assert Ok(#(i, value)) = res
-  let res = i.environment |> environment.assign(e.name, value)
-  case res {
-    Error(err) -> Error(err)
-    Ok(env) -> #(Interpreter(environment: env), value) |> Ok
-  }
+  Ok(#(Interpreter(env), value))
 }
 
 pub fn visit_block_stmt(
@@ -423,7 +401,7 @@ pub fn execute_block(
 ) -> Result(Interpreter, LoxError) {
   let previous: Environment = i.environment
   let i = Interpreter(env)
-  let res =
+  let res: Result(Interpreter, LoxError) =
     stmts
     |> list.fold_until(Ok(i), fn(acc: Result(Interpreter, LoxError), x: Stmt) {
       case acc {
@@ -431,29 +409,17 @@ pub fn execute_block(
         Ok(interp) -> Continue(interp |> execute(x))
       }
     })
-  use <- bool.guard(
-    when: res |> result.is_error,
-    return: res
-      |> result.unwrap_error(RuntimeError("block execution error"))
-      |> Error,
-  )
-  let i = Interpreter(previous)
-  Ok(i)
+  use _ <- result.try(res)
+  Interpreter(previous)
+  |> Ok
 }
 
 pub fn visit_if_stmt(
   i: Interpreter,
   stmt: stmt.If,
 ) -> Result(Interpreter, LoxError) {
-  let res: Result(#(Interpreter, Object), LoxError) =
-    i |> evaluate(stmt.condition)
-  use <- bool.guard(
-    when: res |> result.is_error,
-    return: res
-      |> result.unwrap_error(RuntimeError("Evaluate condition error"))
-      |> Error,
-  )
-  let assert Ok(#(i, object)) = res
+  use #(i, object) <- result.try(i |> evaluate(stmt.condition))
+
   case object |> is_truthy, stmt.elseb != stmt.StmtNone {
     True, _ -> i |> execute(stmt.thenb)
     False, True -> i |> execute(stmt.elseb)

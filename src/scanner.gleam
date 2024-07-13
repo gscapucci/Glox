@@ -1,5 +1,5 @@
 import common
-import error
+import error.{type LoxError, ScanError}
 import gleam/bool
 import gleam/dict.{type Dict}
 import gleam/erlang
@@ -58,7 +58,7 @@ pub fn new_scanner(source: String) -> Scanner {
   )
 }
 
-pub fn scan_tokens(scan: Scanner) -> Result(Scanner, String) {
+pub fn scan_tokens(scan: Scanner) -> Result(Scanner, LoxError) {
   case scan |> is_at_end {
     True -> {
       let ttokens =
@@ -70,12 +70,8 @@ pub fn scan_tokens(scan: Scanner) -> Result(Scanner, String) {
     }
     False -> {
       let scan = Scanner(..scan, start: scan.current)
-      let scan: Result(Scanner, String) = scan_token(scan)
-      use <- bool.guard(
-        when: scan |> result.is_error,
-        return: Error(scan |> result.unwrap_error("Scan token error")),
-      )
-      scan_tokens(scan |> result.lazy_unwrap(fn() { panic as "Unreachable" }))
+      use scan: Scanner <- result.try(scan |> scan_token)
+      scan_tokens(scan)
     }
   }
 }
@@ -84,7 +80,7 @@ pub fn is_at_end(scan: Scanner) -> Bool {
   scan.current >= string.length(scan.source)
 }
 
-pub fn scan_token(scan: Scanner) -> Result(Scanner, String) {
+pub fn scan_token(scan: Scanner) -> Result(Scanner, LoxError) {
   let #(scan, c): #(Scanner, String) = advance(scan)
   case c {
     "(" -> add_token(scan, token_type.LeftParen) |> Ok
@@ -164,7 +160,7 @@ pub fn scan_token(scan: Scanner) -> Result(Scanner, String) {
     _ -> {
       use <- bool.guard(when: is_digit(c), return: number(scan))
       use <- bool.guard(when: is_alpha(c), return: identifier(scan))
-      Error("Unkown token '" <> c <> "'")
+      ScanError("Unkown token '" <> c <> "'") |> Error
     }
   }
 }
@@ -186,7 +182,7 @@ pub fn is_alpha(c: String) -> Bool {
   { i >= a && i <= z } || { i >= a2 && i <= z2 } || c == "_"
 }
 
-pub fn identifier(scan: Scanner) -> Result(Scanner, String) {
+pub fn identifier(scan: Scanner) -> Result(Scanner, LoxError) {
   case is_alphanumeric(peek(scan)) {
     True -> {
       let #(scan, _) = advance(scan)
@@ -194,13 +190,11 @@ pub fn identifier(scan: Scanner) -> Result(Scanner, String) {
     }
     False -> {
       let text = common.sub_string(scan.source, scan.start, scan.current)
-      let ttype = scan.keywords |> dict.get(text)
-      use <- bool.guard(
-        when: ttype |> result.is_error,
-        return: Ok(add_token(scan, token_type.Identifier)),
-      )
-      let assert Ok(ttype) = ttype
-      Ok(add_token(scan, ttype))
+      case scan.keywords |> dict.get(text) {
+        Error(_) -> add_token(scan, token_type.Identifier)
+        Ok(t) -> add_token(scan, t)
+      }
+      |> Ok
     }
   }
 }
@@ -209,11 +203,11 @@ pub fn is_alphanumeric(c: String) -> Bool {
   is_alpha(c) || is_digit(c)
 }
 
-pub fn number(scan: Scanner) -> Result(Scanner, String) {
+pub fn number(scan: Scanner) -> Result(Scanner, LoxError) {
   number_priv(scan, False)
 }
 
-pub fn number_priv(scan: Scanner, found_dot: Bool) -> Result(Scanner, String) {
+pub fn number_priv(scan: Scanner, found_dot: Bool) -> Result(Scanner, LoxError) {
   case is_digit(peek(scan)) {
     True -> {
       let #(scan, _) = advance(scan)
@@ -222,7 +216,10 @@ pub fn number_priv(scan: Scanner, found_dot: Bool) -> Result(Scanner, String) {
     False -> {
       use <- bool.guard(
         when: found_dot,
-        return: Error("Scan number error line: " <> int.to_string(scan.line)),
+        return: ScanError(
+          "Scan number error line: " <> int.to_string(scan.line),
+        )
+          |> Error,
       )
       case peek(scan) == "." && is_digit(peek_next(scan)) {
         True -> {
@@ -231,35 +228,23 @@ pub fn number_priv(scan: Scanner, found_dot: Bool) -> Result(Scanner, String) {
         }
         False -> {
           let text = common.sub_string(scan.source, scan.start, scan.current)
-          let num = float.parse(text)
-          use <- bool.lazy_guard(when: num |> result.is_error, return: fn() {
-            let num = int.parse(text)
-            use <- bool.guard(
-              when: num |> result.is_error,
-              return: Error("parse error"),
-            )
-            let scan =
+          case float.parse(text), int.parse(text) {
+            Ok(num), _ ->
+              add_token_obj(
+                scan,
+                token_type.FFloat,
+                Object(object.ObjTypeFloat(num)),
+              )
+              |> Ok
+            Error(_), Ok(num) ->
               add_token_obj(
                 scan,
                 token_type.Integer,
-                Object(object.ObjTypeInt(
-                  num
-                  |> result.lazy_unwrap(fn() { panic as "Unreachable" }),
-                )),
+                Object(object.ObjTypeInt(num)),
               )
-            Ok(scan)
-          })
-          let scan =
-            add_token_obj(
-              scan,
-              token_type.FFloat,
-              Object(
-                object.ObjTypeFloat(
-                  result.lazy_unwrap(num, fn() { panic as "Unreachable" }),
-                ),
-              ),
-            )
-          Ok(scan)
+              |> Ok
+            _, _ -> ScanError("num parse error") |> Error
+          }
         }
       }
     }
@@ -270,15 +255,11 @@ pub fn peek_next(scan: Scanner) -> String {
   case scan.current + 1 >= string.length(scan.source) {
     True -> ""
     False -> {
-      let c =
-        scan.source
-        |> string.to_graphemes
-        |> iterator.from_list
-        |> iterator.at(scan.current + 1)
-      use <- bool.lazy_guard(when: c |> result.is_error, return: fn() {
-        panic as "Unreachable"
-      })
-      c |> result.lazy_unwrap(fn() { panic as "Unreachable" })
+      scan.source
+      |> string.to_graphemes
+      |> iterator.from_list
+      |> iterator.at(scan.current + 1)
+      |> result.lazy_unwrap(fn() { panic as "Unreachable" })
     }
   }
 }
@@ -305,7 +286,8 @@ pub fn advance(scan: Scanner) -> #(Scanner, String) {
       <> scan.current |> int.to_string
     }
   })
-  #(scan, str |> result.lazy_unwrap(fn() { panic as "Unreachable" }))
+  let assert Ok(str) = str
+  #(scan, str)
 }
 
 pub fn add_token(scan: Scanner, ttype: TokenType) -> Scanner {

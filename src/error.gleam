@@ -5,6 +5,7 @@ import token.{type Token}
 pub type LoxError {
   RuntimeError(String)
   ParseError(String)
+  ScanError(String)
   LoxError(String)
 }
 

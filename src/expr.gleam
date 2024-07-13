@@ -25,10 +25,15 @@ pub type Assign {
   Assign(name: Token, value: Expr)
 }
 
+pub type Logical {
+  Logical(left: Expr, operator: Token, right: Expr)
+}
+
 pub type Expr {
   ExprBinary(Binary)
   ExprGrouping(Grouping)
   ExprLiteral(Literal)
+  ExprLogical(Logical)
   ExprUnary(Unary)
   ExprVariable(Var)
   ExprAssign(Assign)
@@ -39,6 +44,7 @@ pub type ExprType {
   ExprTypeBinary
   ExprTypeGrouping
   ExprTypeLiteral
+  ExprTypeLogical
   ExprTypeUnary
   ExprTypeVariable
   ExprTypeAssign
@@ -63,6 +69,14 @@ pub fn to_string(expr: Expr) -> String {
     ExprAssign(Assign(name, value)) ->
       "assign(" <> name.lexeme <> " " <> value |> to_string <> ")"
     ExprNone -> " NONE "
+    ExprLogical(Logical(left, operand, right)) ->
+      "( "
+      <> operand.lexeme
+      <> " "
+      <> left |> to_string
+      <> " "
+      <> right |> to_string
+      <> " )"
   }
 }
 
@@ -72,6 +86,7 @@ pub fn is_instance_of(expr: Expr, other: ExprType) -> Bool {
     ExprGrouping(_), ExprTypeGrouping -> True
     ExprLiteral(_), ExprTypeLiteral -> True
     ExprUnary(_), ExprTypeUnary -> True
+    ExprLogical(_), ExprTypeLogical -> True
     ExprVariable(_), ExprTypeVariable -> True
     ExprAssign(_), ExprTypeAssign -> True
     ExprNone, ExprTypeNone -> True

@@ -7,11 +7,11 @@ import gleam/erlang
 import gleam/io
 import gleam/iterator.{type Iterator}
 import gleam/list
-import gleam/option.{type Option, Some, None}
+import gleam/option.{type Option, None, Some}
 import gleam/result
 import interpreter.{type Interpreter, Interpreter}
 import parser.{type Parser}
-import scanner.{type Scanner, scan_tokens}
+import scanner
 import simplifile
 import stmt.{type Stmt}
 
@@ -20,12 +20,7 @@ pub type Lox {
 }
 
 pub fn run(lox: Lox, source: String) -> Result(Lox, LoxError) {
-  let scan: Result(Scanner, String) = scanner.new_scanner(source) |> scan_tokens
-  use <- bool.guard(
-    when: scan |> result.is_error,
-    return: LoxError(scan |> result.unwrap_error("Unknown Error")) |> Error,
-  )
-  let assert Ok(scan): Result(Scanner, String) = scan
+  use scan <- result.try(scanner.new_scanner(source) |> scanner.scan_tokens)
   let par: Parser = parser.new_parser(scan.tokens)
   let parsed: Option(List(Stmt)) = par |> parser.parse
   use <- bool.guard(
@@ -77,25 +72,19 @@ pub fn lox_main(lox: Lox) -> Result(Lox, LoxError) {
     }
     2 -> {
       let args_it: Iterator(String) = iterator.from_list(argv.load().arguments)
-      let option: String =
+      let assert Ok(option) =
         args_it
         |> iterator.at(0)
-        |> result.lazy_unwrap(fn() { panic as "Unreachable" })
       case option {
         "tokens" -> {
-          let source: String =
+          let assert Ok(source) =
             args_it
             |> iterator.at(1)
-            |> result.lazy_unwrap(fn() { panic as "Unreachable" })
-          let scan_result: Result(Scanner, String) =
-            scanner.new_scanner(source) |> scan_tokens
-          case scan_result {
-            Ok(scanner) -> {
-              scanner.tokens |> list.map(io.debug)
-              Ok(lox)
-            }
-            Error(err) -> LoxError(err) |> Error
-          }
+          use scan <- result.try(
+            scanner.new_scanner(source) |> scanner.scan_tokens,
+          )
+          scan.tokens |> list.map(io.debug)
+          Ok(lox)
         }
         _ -> LoxError("Usage: jlox <options> [script]") |> Error
       }

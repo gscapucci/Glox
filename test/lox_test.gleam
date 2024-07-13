@@ -1,4 +1,5 @@
 import environment.{Environment}
+import error.{type LoxError}
 import gleam/dict
 import gleam/option.{type Option, None, Some}
 import gleam/result
@@ -42,7 +43,7 @@ pub fn scanner_test() {
 
 pub fn peek_test() {
   let scan: Scanner = scanner.new_scanner("1 + 2 * 3;")
-  let assert Ok(scan): Result(Scanner, String) = scan |> scanner.scan_tokens
+  let assert Ok(scan): Result(Scanner, LoxError) = scan |> scanner.scan_tokens
   let par: Parser = parser.new_parser(scan.tokens)
 
   let p = par |> parser.peek
@@ -80,13 +81,13 @@ pub fn peek_test() {
 
 pub fn parser_test() {
   let scan: Scanner = scanner.new_scanner("1 + 2 * 3;")
-  let assert Ok(scan): Result(Scanner, String) = scan |> scanner.scan_tokens
+  let assert Ok(scan): Result(Scanner, LoxError) = scan |> scanner.scan_tokens
   let par: Parser = parser.new_parser(scan.tokens)
   par |> parser.parse |> should.be_some
 }
 
 pub fn interpreter_test() {
-  let assert Ok(scan): Result(Scanner, String) =
+  let assert Ok(scan): Result(Scanner, LoxError) =
     scanner.new_scanner(
       "print 123;\n
        print true;\n
