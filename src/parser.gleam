@@ -154,7 +154,8 @@ pub fn expression(parser: Parser) -> Result(#(Parser, Expr), LoxError) {
 }
 
 pub fn assignment(parser: Parser) -> Result(#(Parser, Expr), LoxError) {
-  use #(parser, expr) <- result.try(parser |> equality)
+  use #(parser, expr) <- result.try(parser |> or)
+  // use #(parser, expr) <- result.try(parser |> equality)
   let #(parser, m): #(Parser, Bool) = parser |> match([token_type.Equal])
   use <- bool.guard(when: !m, return: #(parser, expr) |> Ok)
   let equals: Token = parser |> previous
@@ -171,6 +172,42 @@ pub fn assignment(parser: Parser) -> Result(#(Parser, Expr), LoxError) {
   let name: Token = expr.name
   #(parser, expr.ExprAssign(expr.Assign(name, value))) |> Ok
 }
+
+pub fn or(parser: Parser) -> Result(#(Parser, Expr), LoxError) {
+  use #(parser, expr) <- result.try(parser|>and)
+  parser|>or_priv(expr)
+}
+
+pub fn or_priv(parser: Parser, expr: Expr) -> Result(#(Parser, Expr), LoxError) {
+  let #(parser, m): #(Parser, Bool) = parser|>match([token_type.Or])
+  case m {
+    True -> {
+      let operator: Token = parser|>previous
+      use #(parser, right) <- result.try(parser|>and)
+      #(parser, expr.ExprLogical(expr.Logical(expr, operator, right)))|>Ok
+    }
+    False -> #(parser, expr)|>Ok
+  }
+}
+
+pub fn and(parser: Parser) -> Result(#(Parser, Expr), LoxError) {
+  use #(parser, expr): #(Parser, Expr) <- result.try(parser|>equality)
+  parser|>and_priv(expr)
+}
+
+pub fn and_priv(parser: Parser, expr: Expr) -> Result(#(Parser, Expr), LoxError) {
+  let #(parser, m): #(Parser, Bool) = parser|>match([token_type.And])
+  case m {
+    True -> {
+      let operator: Token = parser|>previous
+      use #(parser, right): #(Parser, Expr) <- result.try(parser|>equality)
+      #(parser, expr.ExprLogical(expr.Logical(expr, operator, right)))|>Ok
+    }
+    False -> #(parser, expr)|>Ok
+  }
+}
+
+
 
 pub fn equality(parser: Parser) -> Result(#(Parser, Expr), LoxError) {
   use #(parser, expr) <- result.try(parser |> comparision)

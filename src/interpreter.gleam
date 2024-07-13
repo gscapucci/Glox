@@ -53,6 +53,7 @@ pub fn accept_expr(
       }
     }
     expr.ExprAssign(a) -> visit_assign_expr(i, a)
+    expr.ExprLogical(l) -> visit_logical_expr(i, l)
     expr.ExprNone -> RuntimeError("Unreachable") |> Error
     _ -> todo
   }
@@ -424,5 +425,20 @@ pub fn visit_if_stmt(
     True, _ -> i |> execute(stmt.thenb)
     False, True -> i |> execute(stmt.elseb)
     _, _ -> Ok(i)
+  }
+}
+
+pub fn visit_logical_expr(
+  i: Interpreter,
+  expr: expr.Logical,
+) -> Result(#(Interpreter, Object), LoxError) {
+  use #(i, left): #(Interpreter, Object) <- result.try(i |> evaluate(expr.left))
+  case expr.operator.ttype == token_type.Or, left |> is_truthy {
+    True, True -> #(i, left) |> Ok
+    False, False -> #(i, left) |> Ok
+    _, _ -> {
+      use #(i, right): #(Interpreter, Object) <- result.try(i|>evaluate(expr.right))
+      #(i, right)|>Ok
+    }
   }
 }
