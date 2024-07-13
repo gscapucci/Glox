@@ -1,8 +1,7 @@
 import environment.{Environment}
-import error.{type LoxError}
 import gleam/dict
 import gleam/list
-import gleam/option.{type Option, None, Some}
+import gleam/option.{None}
 import gleam/result
 import gleeunit
 import gleeunit/should
@@ -10,8 +9,7 @@ import interpreter.{Interpreter}
 import object.{type Object, Object}
 import parser.{type Parser}
 import scanner.{type Scanner}
-import stmt.{type Stmt}
-import token.{type Token, Token}
+import token.{Token}
 import token_type
 
 pub fn main() {
