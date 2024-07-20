@@ -78,21 +78,95 @@ pub fn statement(parser: Parser) -> Result(#(Parser, Stmt), LoxError) {
     parser
     |> match([
       token_type.If,
+      token_type.For,
       token_type.Print,
       token_type.While,
       token_type.LeftBrace,
     ])
-
-  case m, previous(parser).ttype {
-    True, token_type.If -> if_statement(parser)
-    True, token_type.Print -> print_statement(parser)
-    True, token_type.While -> while_statement(parser)
-    True, token_type.LeftBrace -> {
+  use <- bool.guard(when: m, return: case previous(parser).ttype {
+    token_type.If -> if_statement(parser)
+    token_type.For -> for_statement(parser)
+    token_type.Print -> print_statement(parser)
+    token_type.While -> while_statement(parser)
+    token_type.LeftBrace -> {
       use #(parser, stmts) <- result.try(parser |> block)
       #(parser, stmt.StmtBlock(stmt.Block(stmts))) |> Ok
     }
-    _, _ -> expression_statement(parser)
+    _ -> ParseError("statement error") |> Error
+  })
+  expression_statement(parser)
+}
+
+pub fn for_statement(parser: Parser) -> Result(#(Parser, Stmt), LoxError) {
+  use #(parser, _): #(Parser, Token) <- result.try(
+    parser |> consume(token_type.LeftParen, "Expect '(' after 'for';"),
+  )
+
+  let res: Result(#(Parser, Stmt), LoxError) = {
+    let #(parser, m): #(Parser, Bool) = parser |> match([token_type.Semicolon])
+    use <- bool.guard(when: m, return: #(parser, stmt.StmtNone) |> Ok)
+    let #(parser, m): #(Parser, Bool) = parser |> match([token_type.Var])
+    use <- bool.guard(when: m, return: parser |> var_declaration)
+    parser |> expression_statement
   }
+
+  use #(parser, initializer) <- result.try(res)
+
+  let res: Result(#(Parser, Expr), LoxError) = {
+    use <- bool.guard(
+      when: parser |> check(token_type.Semicolon) |> bool.negate,
+      return: parser |> expression,
+    )
+    #(parser, expr.ExprNone) |> Ok
+  }
+  use #(parser, condition) <- result.try(res)
+
+  let res: Result(#(Parser, Token), LoxError) =
+    parser |> consume(token_type.Semicolon, "Expect ';' after loop condition.")
+
+  use #(parser, _) <- result.try(res)
+
+  let res: Result(#(Parser, Expr), LoxError) = {
+    use <- bool.guard(
+      when: parser |> check(token_type.RightParen) |> bool.negate,
+      return: parser |> expression,
+    )
+    #(parser, expr.ExprNone) |> Ok
+  }
+
+  use #(parser, increment) <- result.try(res)
+
+  use #(parser, _) <- result.try(
+    parser |> consume(token_type.RightParen, "Expect ')' after clauses."),
+  )
+  use #(parser, body): #(Parser, Stmt) <- result.try(parser |> statement)
+
+  let body = case increment, body {
+    expr.ExprNone, _ -> body
+    _, stmt.StmtBlock(stmt.Block(b)) ->
+      stmt.StmtBlock(stmt.Block(
+        b |> list.append([stmt.StmtExpression(stmt.Expression(increment))]),
+      ))
+    _, s ->
+      stmt.StmtBlock(
+        stmt.Block([s, stmt.StmtExpression(stmt.Expression(increment))]),
+      )
+  }
+
+  let condition: Expr = case condition {
+    expr.ExprNone ->
+      expr.ExprLiteral(expr.Literal(Object(object.ObjTypeBool(True))))
+    _ -> condition
+  }
+
+  let body = stmt.StmtWhile(stmt.While(condition, body))
+
+  let body = case initializer {
+    stmt.StmtNone -> body
+    _ -> stmt.StmtBlock(stmt.Block([initializer, body]))
+  }
+
+  #(parser, body) |> Ok
 }
 
 pub fn while_statement(parser: Parser) -> Result(#(Parser, Stmt), LoxError) {
